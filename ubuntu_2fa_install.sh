@@ -59,6 +59,7 @@ fi
 
 # 校准SSH必要参数
 echo -e "\n[5/5] 校准 sshd_config 必要参数..."
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
 sed -i 's/^#\?ChallengeResponseAuthentication.*/ChallengeResponseAuthentication yes/' /etc/ssh/sshd_config
 sed -i 's/^#\?KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/' /etc/ssh/sshd_config
 sed -i 's/^#\?UsePAM.*/UsePAM yes/' /etc/ssh/sshd_config
