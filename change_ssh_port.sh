@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # SSH端口修改脚本
-# 支持：正常修改端口 / -r 自动从最新备份回滚
-# 版本：3.0
+# 支持：--help / -r随机端口 / 指定端口
+# 版本：最终稳定版
 
 set -uo pipefail
 
@@ -25,6 +25,26 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+show_help() {
+  cat << EOF
+=========================================
+       SSH 端口修改脚本 帮助
+=========================================
+使用方法:
+  sudo ./\$(basename "\$0") --help       # 查看帮助
+  sudo ./\$(basename "\$0") -r           # 使用随机高端口(10000-60000)
+  sudo ./\$(basename "\$0") [端口号]      # 使用指定端口
+示例:
+  sudo ./\$(basename "\$0") -r
+  sudo ./\$(basename "\$0") 2222
+EOF
+  exit 0
+}
+
+gen_random_port() {
+  shuf -i 10000-60000 -n 1
+}
+
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         log_error "必须用root/sudo运行"
@@ -38,8 +58,8 @@ check_port_valid() {
         log_error "端口必须是数字"
         return 1
     fi
-    if (( port < 1 || port > 65535 )); then
-        log_error "端口范围 1-65535"
+    if (( port < 1001 || port > 65535 )); then
+        log_error "端口范围 1001-65535"
         return 1
     fi
     return 0
@@ -128,9 +148,8 @@ verify_port_listening() {
     return 1
 }
 
-# ==================== 回滚函数（核心修复） ====================
 rollback() {
-    local latest_backup=$(ls -t /etc/ssh/sshd_config.backup.* 2>/dev/null | head -1)
+    local latest_backup=$(ls -t /etc/ssh/sshd_config.backup.* 2>/dev/null | head 1)
     if [[ -z $latest_backup || ! -f $latest_backup ]]; then
         log_error "未找到任何SSH备份文件，无法回滚"
         exit 1
@@ -152,20 +171,19 @@ rollback() {
     exit 0
 }
 
-# ==================== 参数解析（修复 -r 报错） ====================
-parse_args() {
-    if [[ $1 == "-r" || $1 == "--rollback" ]]; then
-        check_root
-        rollback
-    fi
-}
-
-# ==================== 主流程 ====================
 main() {
-    # 优先解析参数
-    parse_args "$@"
+    if [[ $1 == "--help" ]]; then
+      show_help
+    fi
 
-    local new_port=${1:-}
+    local new_port=""
+    if [[ $1 == "-r" ]]; then
+      new_port=$(gen_random_port)
+      log_info "随机生成端口: $new_port"
+    elif [[ -n $1 ]]; then
+      new_port=$1
+    fi
+
     echo "========================================="
     echo "       SSH 端口修改工具"
     echo "========================================="
