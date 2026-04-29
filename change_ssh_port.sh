@@ -2,10 +2,11 @@
 
 # SSH端口修改脚本
 # 功能：安全地修改SSH服务端口，包含备份、检查、测试等完整流程
-# 作者：OpenClaw Assistant
-# 版本：1.0
+# 优化：出错打印详情、自动回滚、不直接崩溃
+# 版本：2.0
 
-set -euo pipefail
+# 关闭严格退出，改用手动错误处理（解决一出错就停、不打印问题）
+set -uo pipefail
 
 # 颜色输出
 RED='\033[0;31m'
@@ -96,7 +97,7 @@ modify_sshd_config() {
     # 先移除所有Port配置（注释或未注释的）
     sed -i '/^[[:space:]]*Port[[:space:]]/d' "$config_file"
     
-    # 在合适位置添加新的Port配置（在ListenAddress之前或文件开头）
+    # 在合适位置添加新的Port配置
     if grep -q "^ListenAddress" "$config_file"; then
         sed -i "/^ListenAddress/i Port $new_port" "$config_file"
     else
@@ -208,7 +209,7 @@ verify_port_listening() {
             return 0
         fi
         log_info "等待端口启动... (${attempt}/${max_attempts})"
-        sleep 2
+        sleep 1
         (( attempt++ ))
     done
     
@@ -219,16 +220,27 @@ verify_port_listening() {
 # 回滚函数
 rollback() {
     local backup_file=$1
-    log_warning "正在执行回滚操作..."
+    log_warning "=================================================="
+    log_warning "执行失败，正在自动回滚SSH配置..."
+    log_warning "=================================================="
     
     if [[ -n $backup_file && -f $backup_file ]]; then
         cp "$backup_file" "/etc/ssh/sshd_config"
         log_success "配置已从备份恢复"
+        
         systemctl restart sshd || true
-        log_info "SSH服务已重启"
+        sleep 2
+        if systemctl is-active --quiet sshd; then
+            log_success "SSH服务已恢复正常"
+        else
+            log_warning "SSH服务恢复失败，请手动修复"
+        fi
     else
         log_error "没有可用的备份文件，无法自动回滚"
     fi
+
+    log_error "脚本执行失败！"
+    exit 1
 }
 
 # 主函数
@@ -236,7 +248,7 @@ main() {
     local new_port=${1:-}
     
     echo "========================================="
-    echo "       SSH 端口修改脚本"
+    echo "       SSH 端口修改脚本 v2.0"
     echo "========================================="
     echo
     
@@ -264,7 +276,7 @@ main() {
     fi
     
     # 检查端口占用
-    if check_port_in_use "$new_port"; then
+    if ! check_port_in_use "$new_port"; then
         exit 1
     fi
     
@@ -279,11 +291,15 @@ main() {
     
     # 备份配置
     local backup_file=""
-    backup_file=$(backup_sshd_config) || exit 1
+    backup_file=$(backup_sshd_config)
+    if [[ $? -ne 0 || -z $backup_file ]]; then
+        log_error "备份失败，终止操作"
+        exit 1
+    fi
     
-    # 设置回滚陷阱
-    trap 'rollback "$backup_file"' ERR
-    
+    # ==================== 核心优化：错误捕获 + 自动回滚 ====================
+    trap 'rollback "$backup_file"' SIGINT SIGTERM ERR
+
     # 修改配置
     modify_sshd_config "$new_port" || exit 1
     
@@ -302,8 +318,8 @@ main() {
     # 验证端口监听
     verify_port_listening "$new_port" || exit 1
     
-    # 移除回滚陷阱
-    trap - ERR
+    # 成功：清除回滚陷阱
+    trap - SIGINT SIGTERM ERR
     
     echo
     echo "========================================="
@@ -317,13 +333,9 @@ main() {
     echo
     echo "⚠️  重要提示："
     echo "   1. 不要关闭当前会话！"
-    echo "   2. 新开一个终端窗口测试连接："
-    echo "      ssh -p $new_port user@your-server"
-    echo "   3. 确认新端口可以连接后再关闭当前会话"
-    echo "   4. 如遇到问题，可以从备份恢复："
-    echo "      cp $backup_file /etc/ssh/sshd_config"
-    echo "      systemctl restart sshd"
-    echo "   5. 记得检查云服务商安全组是否已放行 $new_port 端口！"
+    echo "   2. 新开终端测试：ssh -p $new_port user@服务器IP"
+    echo "   3. 确认能登录再关闭当前窗口"
+    echo "   4. 云服务器必须在安全组放行 $new_port 端口！"
     echo
 }
 
