@@ -23,68 +23,88 @@ fi
 echo -e "\033[32m✅ Webhook 已接收\033[0m"
 echo ""
 
-# 固定配置
-SCRIPT_PATH="/home/ubuntu/ssh_login_notify.sh"
+# 固定配置（修改为通用路径，避免ubuntu用户不存在的问题）
+SCRIPT_PATH="/usr/local/bin/ssh_login_notify.sh"
 PAM_CONFIG="/etc/pam.d/sshd"
 CONFIG_LINE="session    optional    pam_exec.so $SCRIPT_PATH"
 
 echo -e "\033[33m⏳ 正在创建通知脚本...\033[0m"
-# 写入通知脚本（自动带入用户输入的 Webhook）
-cat > "$SCRIPT_PATH" << EOF
+# 关键修复：EOF前加\，避免变量提前插值；企微消息格式适配
+cat > "$SCRIPT_PATH" << \EOF
 #!/bin/bash
+# 仅在SSH登录会话创建时执行
 if [ "$PAM_TYPE" != "open_session" ]; then
     exit 0
 fi
 
-# 1. 基础登录信息
-ip=$PAM_RHOST
-date=$(date +"%e %b %Y, %a %r")
-name=$PAM_USER
-
-# 2. 获取服务器公网IP（优先），失败则取内网IP/主机名
-# 方式1：通过公网API获取（推荐，多平台兼容）
-server_public_ip=$(curl -fsSL --max-time 3 http://icanhazip.com 2>/dev/null || curl -fsSL --max-time 3 http://ifconfig.me 2>/dev/null)
-# 方式2：若公网API访问失败，取服务器内网IP（选第一个非回环地址）
-if [ -z "$server_public_ip" ]; then
-    server_public_ip=$(ip -4 addr | grep -E 'inet (?!127.0.0.1)' | grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+' | head -1)
+# 1. 基础登录信息（PAM环境变量，登录时动态获取）
+ip="$PAM_RHOST"
+# 兼容无远程IP的场景（如本地登录）
+if [ -z "$ip" ]; then
+    ip="localhost/本地登录"
 fi
-# 方式3：若仍获取失败，取主机名兜底
+date="$(date +"%Y-%m-%d %H:%M:%S")"
+name="$PAM_USER"
+
+# 2. 获取服务器公网IP（登录时动态获取，而非部署时）
+# 方式1：公网API（国内兼容）
+server_public_ip="$(curl -fsSL --max-time 3 https://api.ipify.org 2>/dev/null || curl -fsSL --max-time 3 http://icanhazip.com 2>/dev/null)"
+# 方式2：内网IP兜底
 if [ -z "$server_public_ip" ]; then
-    server_public_ip=$(hostname -f)
+    server_public_ip="$(ip -4 addr | grep -E 'inet (?!127.0.0.1)' | grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+' | head -1)"
+fi
+# 方式3：主机名兜底
+if [ -z "$server_public_ip" ]; then
+    server_public_ip="$(hostname -f)"
 fi
 
-# 3. 推送钉钉消息（包含服务器公网IP）
+# 3. 推送企业微信消息（适配企微Markdown格式）
+# 企微Markdown换行需用\n，且JSON需严格转义
+content="### SSH登录提醒
+> 服务器公网IP：$server_public_ip
+> 登录用户：$name
+> 客户端IP：$ip
+> 登录时间：$date"
+
 curl -s -X POST "$webhook_url" \
     -H "Content-Type: application/json" \
-    -d "{
-    \"msgtype\": \"markdown\",
-    \"markdown\": {
-        \"content\": \"登录提醒\\\\n> 服务器公网IP: $server_public_ip\\\\n> 登录用户: $name\\\\n> 客户端IP: $ip\\\\n> 登录时间: $date\"
+    -d '{
+    "msgtype": "markdown",
+    "markdown": {
+        "content": "'"${content}"'"
     }
-}"
+}' > /dev/null 2>&1
 EOF
 
-# 授权
+# 替换子脚本中的webhook_url（因为EOF加了\，需手动替换）
+sed -i "s|\$webhook_url|$webhook_url|g" "$SCRIPT_PATH"
+
+# 授权（确保执行权限）
 chmod +x "$SCRIPT_PATH"
 echo -e "\033[32m✅ 通知脚本创建完成：$SCRIPT_PATH\033[0m"
 
-# 配置 PAM
-echo -e "\033[33m⏳ 正在配置 PAM  sshd...\033[0m"
+# 配置 PAM（避免重复添加）
+echo -e "\033[33m⏳ 正在配置 PAM sshd...\033[0m"
 if ! grep -qxF "$CONFIG_LINE" "$PAM_CONFIG"; then
+    # 追加配置，避免覆盖原有内容
     echo "$CONFIG_LINE" >> "$PAM_CONFIG"
     echo -e "\033[32m✅ PAM 配置添加成功\033[0m"
 else
     echo -e "\033[33mℹ️ PAM 配置已存在，跳过\033[0m"
 fi
 
-# 重启 SSH
+# 重启 SSH（兼容不同Ubuntu版本）
 echo -e "\033[33m⏳ 正在重启 SSH 服务...\033[0m"
-systemctl restart sshd
-echo -e "\033[32m✅ SSH 服务重启完成\033[0m"
+if systemctl restart sshd > /dev/null 2>&1; then
+    echo -e "\033[32m✅ SSH 服务重启完成\033[0m"
+else
+    service ssh restart > /dev/null 2>&1
+    echo -e "\033[32m✅ SSH 服务重启完成（兼容模式）\033[0m"
+fi
 
 echo ""
 echo -e "\033[32m=============================================\033[0m"
 echo -e "\033[32m🎉 部署全部完成！\033[0m"
 echo -e "\033[32m✅ 测试：重新登录 SSH 即可收到企微通知\033[0m"
+echo -e "\033[33m⚠️  注意：若收不到通知，请检查服务器能否访问公网\033[0m"
 echo -e "\033[32m=============================================\033[0m"
-echo ""
