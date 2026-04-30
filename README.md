@@ -4,9 +4,9 @@
 
 | 脚本名称 | 功能说明 | 适用场景 |
 | --- | --- | --- |
-| change\_ssh\_port.sh | 一键修改 SSH 端口（自动配置防火墙 + 重启 SSH 服务） | 服务器初始化、提升 SSH 安全性 |
-| `init_ubuntu_server.sh` | Ubuntu 服务器初始化（更新系统、安装常用工具、关闭无用服务） | 新服务器装机后快速配置 |
-| deploy\_ssh\_notify.sh | SSH 登录监控与通知（登录时触发钉钉 / 邮件 / Telegram 通知） | 服务器安全审计、异常登录告警 |
+| `change\_ssh\_port.sh `| 一键修改 SSH 端口（自动配置防火墙 + 重启 SSH 服务） | 服务器初始化、提升 SSH 安全性 |
+| `ubuntu_2fa_install.sh` | Ubuntu 服务器安装2fa一键部署|
+| `deploy\_ssh\_notify.sh` | SSH 登录监控与通知（登录时触发企微通知） | 服务器安全审计、异常登录告警 |
 
 ## 快速使用（一键执行）
 
@@ -25,14 +25,14 @@ sudo chmod +x change_ssh_port.sh && \
 sudo ./change_ssh_port.sh 2024
 ```
 
-### 2\. 一键初始化 Ubuntu 服务器
+### 2\. 一键为 Ubuntu 服务器安装2fa
 
 
 ```bash
-# 下载脚本+赋权+执行（自动完成系统初始化）
-curl -fsSL https://raw.githubusercontent.com/guyon168/ubuntu_server/main/init_ubuntu_server.sh -o init_ubuntu_server.sh && \
-sudo chmod +x init_ubuntu_server.sh && \
-sudo ./init_ubuntu_server.sh
+# 1. 下载
+curl -O https://raw.githubusercontent.com/guyon168/ubuntu_server/main/ubuntu_2fa_install.sh
+sudo chmod +x ubuntu_2fa_install.sh
+sudo ./ubuntu_2fa_install.sh
 ```
 
 ### 3\. 一键部署 SSH 登录通知
