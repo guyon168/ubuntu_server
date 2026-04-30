@@ -32,18 +32,34 @@ echo -e "\033[33m⏳ 正在创建通知脚本...\033[0m"
 # 写入通知脚本（自动带入用户输入的 Webhook）
 cat > "$SCRIPT_PATH" << EOF
 #!/bin/bash
-if [ "\$PAM_TYPE" != "open_session" ]; then
+if [ "$PAM_TYPE" != "open_session" ]; then
     exit 0
 fi
-ip=\$PAM_RHOST
-date=\$(date +"%e %b %Y, %a %r")
-name=\$PAM_USER
+
+# 1. 基础登录信息
+ip=$PAM_RHOST
+date=$(date +"%e %b %Y, %a %r")
+name=$PAM_USER
+
+# 2. 获取服务器公网IP（优先），失败则取内网IP/主机名
+# 方式1：通过公网API获取（推荐，多平台兼容）
+server_public_ip=$(curl -fsSL --max-time 3 http://icanhazip.com 2>/dev/null || curl -fsSL --max-time 3 http://ifconfig.me 2>/dev/null)
+# 方式2：若公网API访问失败，取服务器内网IP（选第一个非回环地址）
+if [ -z "$server_public_ip" ]; then
+    server_public_ip=$(ip -4 addr | grep -E 'inet (?!127.0.0.1)' | grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+' | head -1)
+fi
+# 方式3：若仍获取失败，取主机名兜底
+if [ -z "$server_public_ip" ]; then
+    server_public_ip=$(hostname -f)
+fi
+
+# 3. 推送钉钉消息（包含服务器公网IP）
 curl -s -X POST "$webhook_url" \
     -H "Content-Type: application/json" \
     -d "{
     \"msgtype\": \"markdown\",
     \"markdown\": {
-        \"content\": \"登录提醒\\\\n> 登录用户: \$name\\\\n> 客户端IP: \$ip\\\\n> 登录时间: \$date\"
+        \"content\": \"登录提醒\\\\n> 服务器公网IP: $server_public_ip\\\\n> 登录用户: $name\\\\n> 客户端IP: $ip\\\\n> 登录时间: $date\"
     }
 }"
 EOF
