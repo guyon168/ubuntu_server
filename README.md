@@ -12,13 +12,15 @@
 
 ### 1\. 一键修改 SSH 端口
 
-
+使用随机端口(推荐)
 ```bash
-# 下载脚本+赋权+执行（交互式输入新端口）
+# 下载脚本+赋权+执行（参数-r使用随机端口）
 curl -fsSL https://raw.githubusercontent.com/guyon168/ubuntu_server/main/change_ssh_port.sh -o change_ssh_port.sh && \
 sudo chmod +x change_ssh_port.sh && \
-sudo ./change_ssh_port.sh
-
+sudo ./change_ssh_port.sh -r 
+```
+使用指定端口
+```
 # 非交互式执行（直接指定端口，例如 2024）
 curl -fsSL https://raw.githubusercontent.com/guyon168/ubuntu_server/main/change_ssh_port.sh -o change_ssh_port.sh && \
 sudo chmod +x change_ssh_port.sh && \
@@ -27,7 +29,7 @@ sudo ./change_ssh_port.sh 2024
 
 ### 2\. 一键为 Ubuntu 服务器安装2fa
 
-
+需要先绑定密钥登录
 ```bash
 # 1. 下载
 curl -O https://raw.githubusercontent.com/guyon168/ubuntu_server/main/ubuntu_2fa_install.sh
