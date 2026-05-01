@@ -31,7 +31,7 @@ sudo ./change_ssh_port.sh 2024
 
 需要先绑定密钥登录
 ```bash
-# 1. 下载
+# 1. 下载安装2fa脚本
 curl -O https://raw.githubusercontent.com/guyon168/ubuntu_server/main/ubuntu_2fa_install.sh
 sudo chmod +x ubuntu_2fa_install.sh
 sudo ./ubuntu_2fa_install.sh
@@ -46,6 +46,14 @@ sudo ./ubuntu_2fa_install.sh
 curl -fsSL https://raw.githubusercontent.com/guyon168/ubuntu_server/main/deploy_ssh_notify.sh -o deploy_ssh_notify.sh && \
 sudo chmod +x deploy_ssh_notify.sh && \
 sudo ./deploy_ssh_notify.sh
+```
+
+### 4\.一键部署服务器性能定时监控
+```bash
+# 下载安装服务器性能监控
+curl -O https://raw.githubusercontent.com/guyon168/ubuntu_server/main/deploy_ubuntu_server_monitor.sh
+sudo chmod +x deploy_ubuntu_server_monitor.sh
+sudo ./deploy_ubuntu_server_monitor.sh
 ```
 
 ## 详细说明
