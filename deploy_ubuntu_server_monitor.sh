@@ -25,13 +25,23 @@ echo "============================================="
 echo "  服务器监控一键部署（兼容所有系统+完整版PY）"
 echo "============================================="
 
-# 1. 输入企微 Webhook
+# 1. 输入服务器名称（用于在企微报告中区分不同服务器，支持中文/英文/数字）
+read -p "请输入本服务器名称(支持中文/英文/数字，如 openclaw / 量化主机 / 香港节点)：" SERVER_NAME
+if [[ -z "${SERVER_NAME// }" ]]; then
+    err "服务器名称不能为空"
+fi
+# 仅禁止可能破坏 sed 替换的字符：|  以及反斜杠
+if [[ "${SERVER_NAME}" == *"|"* || "${SERVER_NAME}" == *"\\"* ]]; then
+    err "服务器名称不能包含字符 | 或 \\"
+fi
+
+# 2. 输入企微 Webhook
 read -p "请粘贴企业微信Webhook完整地址：" WEBHOOK
 if [[ ! "${WEBHOOK}" =~ ^https://qyapi.weixin.qq.com ]]; then
     err "Webhook 格式错误，必须是企业微信机器人链接"
 fi
 
-# 2. 输入整点时间
+# 3. 输入整点时间
 read -p "请输入每天推送整点(0-23，如6=早上6点)：" H
 if ! [[ "${H}" =~ ^([0-9]|1[0-9]|2[0-3])$ ]]; then
     err "时间必须是 0-23 之间整数"
@@ -40,7 +50,7 @@ fi
 CRON_TIME="0 ${H} * * *"
 CRON_CMD="cd ${BASE_DIR} && python3 server_monitor.py >> ${CRON_LOG} 2>&1"
 
-# 3. 自动适配 yum / apt 安装依赖
+# 4. 自动适配 yum / apt 安装依赖
 info "检测系统包管理器并安装依赖..."
 if command -v apt &>/dev/null; then
     sudo apt update -y
@@ -51,7 +61,7 @@ else
     err "不支持当前系统，请手动安装：python3-psutil python3-requests"
 fi
 
-# 4. 写入你原版完整未删减的 server_monitor.py
+# 5. 写入你原版完整未删减的 server_monitor.py
 info "写入完整版监控脚本 server_monitor.py"
 cat > "${PY_FILE}" << 'PYEOF'
 #!/usr/bin/env python3
@@ -62,6 +72,7 @@ cat > "${PY_FILE}" << 'PYEOF'
 ✅ 所有数据动态获取，无任何硬编码任务/进程
 ✅ 表格 + 代码块包裹，和截图风格完全一致
 ✅ 新增：抓取 docker exec qronos-app pm2 列表
+✅ 新增：SERVER_NAME 用于多服务器场景下快速区分（部署时由 deploy 脚本注入）
 """
 
 import os
@@ -74,6 +85,12 @@ import psutil
 import requests
 import json
 from datetime import datetime
+
+# ========================================================
+# 🏷️ 服务器名称（部署时由 deploy 脚本注入，便于多服务器区分）
+# 部署后如需修改，可手动改这一行，例如："openclaw" 
+# ========================================================
+SERVER_NAME = "__SERVER_NAME_PLACEHOLDER__"
 
 
 def get_server_ip():
@@ -264,6 +281,7 @@ def generate_report():
 
     # ====================== 标题 ======================
     r.append("**🖥️ 服务器状态完整报告**")
+    r.append(f"🏷️ 服务器名称：**{SERVER_NAME}**")
     r.append("")
 
     # ====================== 系统性能 ======================
@@ -404,6 +422,7 @@ def generate_report():
     r.append("")
 
     # ====================== 服务器信息 ======================
+    r.append(f"🏷️ 服务器名称：**{SERVER_NAME}**")
     r.append(f"📍 服务器地址：**{system['ip']}**")
     r.append(f"✅ 报告生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     r.append("")
@@ -433,12 +452,14 @@ if __name__ == "__main__":
     main()
 PYEOF
 
-# 5. 自动替换里面的 Webhook 占位符为你输入的地址
+# 6. 自动替换里面的占位符为用户输入
 sed -i "s|__WEBHOOK_PLACEHOLDER__|${WEBHOOK}|g" "${PY_FILE}"
+# 使用 # 作为 sed 分隔符，避免和名称中可能出现的 / : 等冲突
+sed -i "s#__SERVER_NAME_PLACEHOLDER__#${SERVER_NAME}#g" "${PY_FILE}"
 chmod +x "${PY_FILE}"
-info "完整版监控脚本写入并配置完成"
+info "完整版监控脚本写入并配置完成（服务器名称：${SERVER_NAME}）"
 
-# 6. 去重添加定时任务
+# 7. 去重添加定时任务
 if crontab -l 2>/dev/null | grep -Fq "${CRON_CMD}"; then
     warn "定时任务已存在，无需重复添加"
 else
@@ -446,11 +467,12 @@ else
     info "定时任务添加成功：每天 ${H}:00 自动推送"
 fi
 
-# 7. 立即测试推送一次
+# 8. 立即测试推送一次
 info "正在测试推送，请查看企业微信消息..."
 cd "${BASE_DIR}" && python3 server_monitor.py
 
 echo -e "\n${GREEN}==================== 部署完成 ====================${NC}"
+echo "服务器名称：${SERVER_NAME}"
 echo "脚本目录：${BASE_DIR}"
 echo "监控脚本：${PY_FILE}"
 echo "定时运行日志：${CRON_LOG}"
